@@ -1,0 +1,171 @@
+# --- initial checks ---
+[[ $- != *i* ]] && return
+
+# --- environment & cache ---
+export ZSH_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+mkdir -p "$ZSH_CACHE_DIR"
+
+# brew
+if [[ "$(uname -s)" == "Darwin" ]] && command -v /opt/homebrew/bin/brew >/dev/null; then
+    brew_cache_file="${ZSH_CACHE_DIR}/brew-shellenv-macos.zsh"
+    if [[ ! -f "$brew_cache_file" || "$brew_cache_file" -ot "/opt/homebrew/bin/brew" ]]; then
+        /opt/homebrew/bin/brew shellenv >| "$brew_cache_file" 2>/dev/null
+    fi
+    source "$brew_cache_file"
+fi
+if [[ "$(uname -s)" == "Linux" ]] && command -v /home/linuxbrew/.linuxbrew/bin/brew >/dev/null; then
+    brew_cache_file="${ZSH_CACHE_DIR}/brew-shellenv-linux.zsh"
+    if [[ ! -f "$brew_cache_file" || "$brew_cache_file" -ot "/home/linuxbrew/.linuxbrew/bin/brew" ]]; then
+        /home/linuxbrew/.linuxbrew/bin/brew shellenv >| "$brew_cache_file" 2>/dev/null
+    fi
+    source "$brew_cache_file"
+fi
+
+# --- shell options ---
+setopt autocd extendedglob nomatch notify prompt_subst
+unsetopt beep
+export EDITOR="nvim"
+export VISUAL="$EDITOR"
+export TERM=xterm-256color
+
+# --- history settings ---
+HISTSIZE=10000
+HISTFILE=~/.histfile
+SAVEHIST=$HISTSIZE
+setopt appendhistory sharehistory hist_expire_dups_first \
+        hist_ignore_dups hist_ignore_space hist_find_no_dups \
+        hist_save_no_dups hist_verify inc_append_history
+
+# --- prompt ---
+if command -v starship >/dev/null; then
+  SPACESHIP_PROMPT_ASYNC=true
+  SPACESHIP_PROMPT_ADD_NEWLINE=true
+  SPACESHIP_CHAR_SYMBOL="⚡"
+  
+  SPACESHIP_PROMPT_ORDER=(
+      time
+      user
+      dir
+      git
+      line_sep
+      char
+  )
+  eval "$(starship init zsh)"
+else
+  PS1='[%F{cyan}%1~%f 🐻] '
+  echo "%F{red}WARNING: starship not installed.%f" >&2
+fi
+
+# --- keybindings ---
+# vi
+bindkey -v
+export KEYTIMEOUT=0
+autoload edit-command-line; zle -N edit-command-line
+bindkey '^e' edit-command-line
+
+# --- aliases ---
+alias v='nvim'
+alias c='clear'
+alias grep='grep --color=auto'
+alias egrep='egrep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias ..='cd ..'
+alias ...='cd ../..'
+
+if command -v lsd >/dev/null; then
+  alias ls='lsd --color=always'
+  alias ll='lsd -l --color=always'
+  alias la='lsd -a --color=always'
+  alias lla='lsd -la --color=always'
+  alias lt='lsd --tree --color=always'
+else
+  alias ls='ls --color=auto'
+  alias ll='ls -lh'
+  alias la='ls -lhAF'
+  alias lr='ls -lhRAF'
+fi
+
+# --- plugin manager (zinit) ---
+ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+
+source "${ZINIT_HOME}/zinit.zsh"
+
+# --- plugins ---
+zinit ice lucid
+zinit light zdharma-continuum/fast-syntax-highlighting
+zinit ice lucid depth'1' wait'0'
+zinit light zsh-users/zsh-completions
+zinit ice lucid depth'1' wait'0' atload'bindkey "^ " autosuggest-accept'
+zinit light zsh-users/zsh-autosuggestions
+zinit ice lucid depth'1' wait'0'
+zinit light Aloxaf/fzf-tab
+zinit ice lucid depth'1' wait'0'
+zinit light joshskidmore/zsh-fzf-history-search
+
+# --- completion system ---
+# load n cache
+autoload -Uz compinit
+_zcompdump="$ZSH_CACHE_DIR/.zcompdump"
+if [[ ! -e "$_zcompdump" || -n "$_zcompdump"(#qN.mh+24) ]]; then
+      print -P "%F{yellow}Updating zsh completions cache...%f" >&2
+      compinit -i -d "$_zcompdump"
+  else
+      compinit -C -d "$_zcompdump"
+ fi
+
+# auto update compinit dump
+zinit cdreplay -q
+
+# --- completion styling ---
+zstyle ':completion:*' completer _oldlist _expand _complete _ignored _match \
+_correct _approximate _prefix
+zstyle ':completion:*' condition 0
+zstyle ':completion:*' verbose yes
+zstyle ':completion:*:*:*:*:descriptions' format '%F{yellow}-- %d --%f'
+zstyle ':completion:*:*:*:*:corrections' format '%F{green}!- %d (errors: %e) -!%f'
+zstyle ':completion:*:*:*:*:messages' format '%F{purple} -- %d -- %f'
+zstyle :compinstall filename '/home/nairda/.zshrc'
+
+# fzf
+zstyle ':completion:*:git-checkout:*' sort false
+zstyle ':completion:*:descriptions' format '[%d]'
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
+zstyle ':completion:*' menu no
+zstyle ':fzf-tab:complete:cd:*' fzf-preview 'lsd --color=always $realpath || ls --color=always $realpath'
+zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'lsd --color=always $realpath || ls --color=always $realpath'
+zstyle ':fzf-tab:*' fzf-flags --color=fg:1,fg+:2 --bind=tab:accept
+zstyle ':fzf-tab:*' use-fzf-default-opts yes
+zstyle ':fzf-tab:*' switch-group '<' '>'
+zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup
+
+# --- hooks ---
+autoload -Uz add-zsh-hook
+add-zsh-hook chpwd ls_on_cd_hook
+ls_on_cd_hook() {
+  emulate -L zsh; setopt local_options
+  local count=$(ls -A1 2>/dev/null | wc -l)
+  if (( count < 15)); then ll
+  else print -P "%F{yellow}…${count} items; skipped%f"; fi
+}
+
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+
+# --- shell integrations ---
+fzf_init_cache="${ZSH_CACHE_DIR}/fzf-init.zsh"
+if command -v fzf >/dev/null && [[ ! -f "$fzf_init_cache" || "$fzf_init_cache" -ot "$(command -v fzf)" ]]; then
+    print -P "%F{yellow}Updating fzf init cache...%f" >&2
+    command fzf --zsh >| "$fzf_init_cache" 2>/dev/null
+fi
+if [[ -f "$fzf_init_cache" ]]; then
+    source "$fzf_init_cache"
+fi
+
+zoxide_init_cache="${ZSH_CACHE_DIR}/zoxide-init.zsh"
+if command -v zoxide >/dev/null && [[ ! -f "$zoxide_init_cache" || "$zoxide_init_cache" -ot "$(command -v zoxide)" ]]; then
+    print -P "%F{yellow}Updating zoxide init cache...%f" >&2
+    command zoxide init --cmd cd zsh >| "$zoxide_init_cache" 2>/dev/null
+fi
+if [[ -f "$zoxide_init_cache" ]]; then
+    source "$zoxide_init_cache"
+fi
+
