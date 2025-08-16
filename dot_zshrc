@@ -87,7 +87,8 @@ fi
 
 # --- plugin manager (zinit) ---
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
-
+[ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
+[ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
 source "${ZINIT_HOME}/zinit.zsh"
 
 # --- plugins ---
@@ -147,8 +148,6 @@ ls_on_cd_hook() {
   if (( count < 15)); then ll
   else print -P "%F{yellow}…${count} items; skipped%f"; fi
 }
-
-eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 
 # --- shell integrations ---
 fzf_init_cache="${ZSH_CACHE_DIR}/fzf-init.zsh"
